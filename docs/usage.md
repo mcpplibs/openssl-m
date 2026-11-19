@@ -78,8 +78,10 @@ aside by OpenSSL's `types.h`, so including `<wincrypt.h>` first works (tested).
 ## Not supported
 
 compat.openssl is built at install time for the host, by OpenSSL's Configure and make (nmake on
-Windows), outside mcpp's compile rules. There is therefore no cross target — no wasm32, no
-musl/openkal graph, no cross architecture — until OpenSSL is built inside the build graph.
+Windows), outside mcpp's compile rules, against the host's C library. There is therefore no cross
+target — no wasm32, no musl/openkal graph, no cross architecture — until OpenSSL is built inside
+the build graph. On Linux aarch64, mcpp's `gcc@16.1.0` is a musl toolchain
+(`aarch64-linux-musl-g++`), so use LLVM there (`llvm@23.1.3`, glibc), as CI does.
 
 ## Regenerating
 

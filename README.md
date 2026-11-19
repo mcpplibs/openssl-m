@@ -73,9 +73,10 @@ lists `OBJ_*`, `OPENSSL_malloc` / `OPENSSL_free` and the others that record `__F
 
 ## Platforms
 
-Linux (x86_64, aarch64), macOS (arm64) and Windows (x86_64, with `NOMINMAX` and
-`WIN32_LEAN_AND_MEAN`). compat.openssl is built at install time for the host by OpenSSL's
-Configure, so there is no cross target: no wasm32, no musl graph.
+Linux x86_64 (GCC, LLVM) and aarch64 (LLVM), macOS (arm64) and Windows (x86_64, with
+`NOMINMAX` and `WIN32_LEAN_AND_MEAN`). compat.openssl is built at install time for the host by
+OpenSSL's Configure against the host's glibc, so there is no cross target and no musl graph: no
+wasm32, and not mcpp's GCC on Linux aarch64, which is a musl toolchain.
 
 ## Build and testing
 

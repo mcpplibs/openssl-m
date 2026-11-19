@@ -67,9 +67,10 @@ OID 弧列表 `OBJ_*`、记录 `__FILE__` 的 `OPENSSL_malloc` / `OPENSSL_free` 
 
 ## 平台
 
-Linux（x86_64、aarch64）、macOS（arm64）、Windows（x86_64，定义 `NOMINMAX` 与
-`WIN32_LEAN_AND_MEAN`）。compat.openssl 在安装时用 OpenSSL 的 Configure 为宿主构建，
-因此没有交叉目标：不支持 wasm32，也不支持 musl 图。
+Linux x86_64（GCC、LLVM）与 aarch64（LLVM）、macOS（arm64）、Windows（x86_64，定义
+`NOMINMAX` 与 `WIN32_LEAN_AND_MEAN`）。compat.openssl 在安装时用 OpenSSL 的 Configure
+按宿主 glibc 构建，因此没有交叉目标，也不支持 musl 图：不支持 wasm32，也不支持 Linux aarch64
+上 mcpp 的 GCC（它是 musl 工具链）。
 
 ## 构建与测试
 
