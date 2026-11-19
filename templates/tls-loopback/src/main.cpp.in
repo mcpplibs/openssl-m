@@ -1,0 +1,99 @@
+// A TLS client and server in one process through import mcpplibs.mwrap.openssl:
+// a P-256 key and a self-signed certificate for "localhost" are made at run
+// time, the client trusts exactly that certificate, and the two ends talk over
+// a pair of memory BIOs — no network, no files. The handshake is driven the
+// way an application with non-blocking I/O drives it.
+import std;
+import mcpplibs.mwrap.openssl;
+
+namespace m = mcpplibs::mwrap::openssl::macros;
+
+namespace {
+std::string last_error() {
+    char text[256] = "no error";
+    if (const unsigned long code = ERR_get_error()) ERR_error_string_n(code, text, sizeof text);
+    return text;
+}
+
+bool fail(std::string_view what) {
+    std::println("{}: {}", what, last_error());
+    return false;
+}
+
+X509* self_signed(EVP_PKEY* key) {
+    X509* certificate = X509_new();
+    X509_set_version(certificate, m::X509_VERSION_3);
+    ASN1_INTEGER_set(X509_get_serialNumber(certificate), 1);
+    X509_gmtime_adj(X509_getm_notBefore(certificate), 0);
+    X509_gmtime_adj(X509_getm_notAfter(certificate), 24 * 3600);
+    X509_set_pubkey(certificate, key);
+    X509_NAME* name = X509_get_subject_name(certificate);
+    X509_NAME_add_entry_by_txt(name, "CN", m::MBSTRING_ASC, reinterpret_cast<const unsigned char*>("localhost"), -1, -1, 0);
+    X509_set_issuer_name(certificate, name);
+    X509_sign(certificate, key, EVP_sha256());
+    return certificate;
+}
+
+bool handshake(SSL* client, SSL* server) {
+    bool client_done = false, server_done = false;
+    for (int round = 0; round < 100 && !(client_done && server_done); ++round) {
+        for (auto [ssl, done] : {std::pair{client, &client_done}, std::pair{server, &server_done}}) {
+            if (*done) continue;
+            const int result = SSL_do_handshake(ssl);
+            if (result == 1) { *done = true; continue; }
+            const int error = SSL_get_error(ssl, result);
+            if (error != m::SSL_ERROR_WANT_READ && error != m::SSL_ERROR_WANT_WRITE) return false;
+        }
+    }
+    return client_done && server_done;
+}
+}  // namespace
+
+int main() {
+    EVP_PKEY* key = EVP_PKEY_Q_keygen(nullptr, nullptr, "EC", "P-256");
+    if (!key) return fail("key") ? 0 : 1;
+    X509* certificate = self_signed(key);
+
+    SSL_CTX* server_context = SSL_CTX_new(TLS_server_method());
+    SSL_CTX_use_certificate(server_context, certificate);
+    SSL_CTX_use_PrivateKey(server_context, key);
+
+    SSL_CTX* client_context = SSL_CTX_new(TLS_client_method());
+    X509_STORE_add_cert(SSL_CTX_get_cert_store(client_context), certificate);  // trust exactly this certificate
+    SSL_CTX_set_verify(client_context, m::SSL_VERIFY_PEER, nullptr);
+    m::SSL_CTX_set_min_proto_version(client_context, m::TLS1_3_VERSION);
+
+    SSL* server = SSL_new(server_context);
+    SSL* client = SSL_new(client_context);
+    BIO *server_io = nullptr, *client_io = nullptr;
+    BIO_new_bio_pair(&server_io, 0, &client_io, 0);
+    SSL_set_bio(server, server_io, server_io);
+    SSL_set_bio(client, client_io, client_io);
+    SSL_set_accept_state(server);
+    SSL_set_connect_state(client);
+    m::SSL_set_tlsext_host_name(client, "localhost");  // SNI
+    SSL_set1_host(client, "localhost");                // and the name the certificate must carry
+
+    bool ok = handshake(client, server) || fail("handshake");
+    if (ok) {
+        std::println("{} with {}, certificate {}", SSL_get_version(client), SSL_CIPHER_get_name(SSL_get_current_cipher(client)),
+                     SSL_get_verify_result(client) == m::X509_V_OK ? "verified" : "NOT verified");
+        std::println("server name the client asked for: {}", SSL_get_servername(server, m::TLSEXT_NAMETYPE_host_name));
+        char buffer[64] = {};
+        SSL_write(client, "hello, server", 13);
+        const int got = SSL_read(server, buffer, sizeof buffer);
+        std::println("server read: {}", std::string_view(buffer, got > 0 ? got : 0));
+        SSL_write(server, "hello, client", 13);
+        const int back = SSL_read(client, buffer, sizeof buffer);
+        std::println("client read: {}", std::string_view(buffer, back > 0 ? back : 0));
+        ok = SSL_version(client) == m::TLS1_3_VERSION && SSL_get_verify_result(client) == m::X509_V_OK && got == 13 && back == 13;
+    }
+
+    SSL_free(client);
+    SSL_free(server);
+    SSL_CTX_free(client_context);
+    SSL_CTX_free(server_context);
+    X509_free(certificate);
+    EVP_PKEY_free(key);
+    return ok ? 0 : 1;
+}

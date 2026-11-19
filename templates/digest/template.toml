@@ -1,0 +1,4 @@
+[template]
+description  = "SHA-256, HMAC and AES-256-GCM with import mcpplibs.mwrap.openssl"
+default      = true
+post_message = "Run `mcpp run`."
