@@ -70,9 +70,12 @@ void each_certificate(STACK_OF(X509)* chain) {
 
 ## Windows
 
-`<openssl/e_ostime.h>` reaches `<winsock2.h>` and `<windows.h>`. The package compiles with
-`NOMINMAX` and `WIN32_LEAN_AND_MEAN`; a consumer that includes OpenSSL's headers itself should
-define both. `<wincrypt.h>`'s `X509_NAME` and the other macros it shares with OpenSSL are set
+On Windows the headers declare the async API (`OSSL_ASYNC_FD`, `SSL_waiting_for_async`,
+`SSL_get_all_async_fds` …) only when `<windows.h>` is already included, so the modules include it
+first, with `NOMINMAX` and `WIN32_LEAN_AND_MEAN`; `<mwrap/openssl/macros.hpp>` does the same. A
+consumer that includes OpenSSL's headers itself should define both macros too.
+`OSSL_BAD_ASYNC_FD` (Windows' `INVALID_HANDLE_VALUE`, a pointer cast) is no constant expression
+there and stays a macro; so does `CRYPTO_ONCE_STATIC_INIT` on macOS (a braced initializer). `<wincrypt.h>`'s `X509_NAME` and the other macros it shares with OpenSSL are set
 aside by OpenSSL's `types.h`, so including `<wincrypt.h>` first works (tested).
 
 ## Not supported

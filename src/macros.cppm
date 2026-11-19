@@ -13425,7 +13425,9 @@ inline constexpr auto CRYPTO_F_PKEY_POLY1305_INIT = mwrap_openssl_capture::value
 inline constexpr auto CRYPTO_F_PKEY_SIPHASH_INIT = mwrap_openssl_capture::value_CRYPTO_F_PKEY_SIPHASH_INIT;
 inline constexpr auto CRYPTO_F_SK_RESERVE = mwrap_openssl_capture::value_CRYPTO_F_SK_RESERVE;
 inline constexpr auto CRYPTO_LOCK = mwrap_openssl_capture::value_CRYPTO_LOCK;
+#if !defined(__APPLE__)
 inline constexpr auto CRYPTO_ONCE_STATIC_INIT = mwrap_openssl_capture::value_CRYPTO_ONCE_STATIC_INIT;
+#endif
 inline constexpr auto CRYPTO_READ = mwrap_openssl_capture::value_CRYPTO_READ;
 inline constexpr auto CRYPTO_R_BAD_ALGORITHM_NAME = mwrap_openssl_capture::value_CRYPTO_R_BAD_ALGORITHM_NAME;
 inline constexpr auto CRYPTO_R_CONFLICTING_NAMES = mwrap_openssl_capture::value_CRYPTO_R_CONFLICTING_NAMES;
@@ -17296,7 +17298,9 @@ inline constexpr auto OSSL_ASYM_CIPHER_PARAM_TLS_CLIENT_VERSION = mwrap_openssl_
 inline constexpr auto OSSL_ASYM_CIPHER_PARAM_TLS_NEGOTIATED_VERSION = mwrap_openssl_capture::value_OSSL_ASYM_CIPHER_PARAM_TLS_NEGOTIATED_VERSION;
 inline constexpr auto OSSL_ATTR_MAP_TYPE = mwrap_openssl_capture::value_OSSL_ATTR_MAP_TYPE;
 inline constexpr auto OSSL_ATTR_MAP_VALUE = mwrap_openssl_capture::value_OSSL_ATTR_MAP_VALUE;
+#if !defined(_WIN32)
 inline constexpr auto OSSL_BAD_ASYNC_FD = mwrap_openssl_capture::value_OSSL_BAD_ASYNC_FD;
+#endif
 inline constexpr auto OSSL_CAPABILITY_TLS_GROUP_ALG = mwrap_openssl_capture::value_OSSL_CAPABILITY_TLS_GROUP_ALG;
 inline constexpr auto OSSL_CAPABILITY_TLS_GROUP_ID = mwrap_openssl_capture::value_OSSL_CAPABILITY_TLS_GROUP_ID;
 inline constexpr auto OSSL_CAPABILITY_TLS_GROUP_IS_KEM = mwrap_openssl_capture::value_OSSL_CAPABILITY_TLS_GROUP_IS_KEM;

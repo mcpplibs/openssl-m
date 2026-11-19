@@ -1422,7 +1422,9 @@ inline constexpr auto value_CRYPTO_F_PKEY_POLY1305_INIT = CRYPTO_F_PKEY_POLY1305
 inline constexpr auto value_CRYPTO_F_PKEY_SIPHASH_INIT = CRYPTO_F_PKEY_SIPHASH_INIT;
 inline constexpr auto value_CRYPTO_F_SK_RESERVE = CRYPTO_F_SK_RESERVE;
 inline constexpr auto value_CRYPTO_LOCK = CRYPTO_LOCK;
+#if !defined(__APPLE__)
 inline constexpr auto value_CRYPTO_ONCE_STATIC_INIT = CRYPTO_ONCE_STATIC_INIT;
+#endif
 inline constexpr auto value_CRYPTO_READ = CRYPTO_READ;
 inline constexpr auto value_CRYPTO_R_BAD_ALGORITHM_NAME = CRYPTO_R_BAD_ALGORITHM_NAME;
 inline constexpr auto value_CRYPTO_R_CONFLICTING_NAMES = CRYPTO_R_CONFLICTING_NAMES;
@@ -5293,7 +5295,9 @@ inline constexpr auto value_OSSL_ASYM_CIPHER_PARAM_TLS_CLIENT_VERSION = OSSL_ASY
 inline constexpr auto value_OSSL_ASYM_CIPHER_PARAM_TLS_NEGOTIATED_VERSION = OSSL_ASYM_CIPHER_PARAM_TLS_NEGOTIATED_VERSION;
 inline constexpr auto value_OSSL_ATTR_MAP_TYPE = OSSL_ATTR_MAP_TYPE;
 inline constexpr auto value_OSSL_ATTR_MAP_VALUE = OSSL_ATTR_MAP_VALUE;
+#if !defined(_WIN32)
 inline constexpr auto value_OSSL_BAD_ASYNC_FD = OSSL_BAD_ASYNC_FD;
+#endif
 inline constexpr auto value_OSSL_CAPABILITY_TLS_GROUP_ALG = OSSL_CAPABILITY_TLS_GROUP_ALG;
 inline constexpr auto value_OSSL_CAPABILITY_TLS_GROUP_ID = OSSL_CAPABILITY_TLS_GROUP_ID;
 inline constexpr auto value_OSSL_CAPABILITY_TLS_GROUP_IS_KEM = OSSL_CAPABILITY_TLS_GROUP_IS_KEM;

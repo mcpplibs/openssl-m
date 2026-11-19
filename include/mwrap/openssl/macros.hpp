@@ -18,6 +18,8 @@
 #  ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
 #  endif
+// As the module is built: the async API is declared only with <windows.h> in.
+#  include <windows.h>
 #endif
 #include <openssl/aes.h>
 #include <openssl/asn1.h>

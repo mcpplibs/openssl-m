@@ -56,6 +56,21 @@ SSL_HEADERS = {'ssl.h', 'ssl2.h', 'ssl3.h', 'tls1.h', 'dtls1.h', 'srtp.h', 'ssle
 # Headers that declare nothing and only reach <windows.h>-era compatibility, or that are not meant to be included alone.
 SKIPPED_HEADERS = set()
 DECL_KINDS = {'FunctionDecl', 'TypedefDecl', 'RecordDecl', 'CXXRecordDecl', 'EnumDecl', 'VarDecl'}
+# Constants that are constant expressions on the platform the record is derived on (Linux) but not on
+# another, with the condition under which the module declares them: OSSL_BAD_ASYNC_FD is Windows'
+# INVALID_HANDLE_VALUE (a cast of -1 to a pointer); CRYPTO_ONCE_STATIC_INIT is Apple's
+# PTHREAD_ONCE_INIT (a braced initializer).
+CONDITIONAL = {
+    'OSSL_BAD_ASYNC_FD': '!defined(_WIN32)',
+    'CRYPTO_ONCE_STATIC_INIT': '!defined(__APPLE__)',
+}
+
+
+def guarded(name, line):
+    condition = CONDITIONAL.get(name)
+    return [f'#if {condition}', line, '#endif'] if condition else [line]
+
+
 FILE_MACROS = ('OPENSSL_FILE', 'OPENSSL_LINE', 'OPENSSL_FUNC', '__FILE__', '__LINE__', 'OPENSSL_MSTR')
 
 
@@ -530,7 +545,7 @@ def capture_text(rec):
              '#if defined(__clang__)', '#pragma clang diagnostic push', '#pragma clang diagnostic ignored "-Wdeprecated-declarations"',
              '#elif defined(__GNUC__)', '#pragma GCC diagnostic push', '#pragma GCC diagnostic ignored "-Wdeprecated-declarations"', '#endif', '',
              'namespace mwrap_openssl_capture {', 'template <class T> using mwrap_t = T;']
-    lines += [f'inline constexpr auto value_{n} = {n};' for n in macros_['constants']]
+    lines += [line for n in macros_['constants'] for line in guarded(n, f'inline constexpr auto value_{n} = {n};')]
     lines += [call_wrapper(f'call_{n}', n, c) for n, c in macros_['calls'].items()]
     lines += ['}  // namespace mwrap_openssl_capture', '', '#if defined(__clang__)', '#pragma clang diagnostic pop', '#elif defined(__GNUC__)',
               '#pragma GCC diagnostic pop', '#endif']
@@ -551,7 +566,7 @@ def macros_text(rec):
               '#if defined(__clang__)', '#pragma clang diagnostic ignored "-Wdeprecated-declarations"', '#elif defined(__GNUC__)',
               '#pragma GCC diagnostic ignored "-Wdeprecated-declarations"', '#endif', '',
               'export namespace mcpplibs::mwrap::openssl::macros {', f'// constants ({len(macros_["constants"])})']
-    lines += [f'inline constexpr auto {n} = mwrap_openssl_capture::value_{n};' for n in macros_['constants']]
+    lines += [line for n in macros_['constants'] for line in guarded(n, f'inline constexpr auto {n} = mwrap_openssl_capture::value_{n};')]
     lines.append(f'// calls ({len(macros_["calls"])})')
     for name, call in macros_['calls'].items():
         params = ', '.join(f'mwrap_openssl_t<{t}> {p}' for p, t in call['params'])
@@ -571,7 +586,7 @@ def constants_test_text(rec):
              '// defined it expands even inside a qualified name, so each is taken, then set aside.',
              '#include <mwrap/openssl/macros.hpp>', '#include <string_view>', '#include <type_traits>', '#include <gtest/gtest.h>', '',
              'import mcpplibs.mwrap.openssl;', '', 'namespace raw {']
-    lines += [f'inline constexpr auto value_{n} = {n};' for n in names]
+    lines += [line for n in names for line in guarded(n, f'inline constexpr auto value_{n} = {n};')]
     lines += ['}  // namespace raw', '']
     lines += [f'#undef {n}' for n in names]
     lines += ['', 'namespace {', 'template <class A, class B>', 'constexpr bool same(A a, B b) {',
@@ -579,7 +594,7 @@ def constants_test_text(rec):
               '    } else if constexpr (std::is_pointer_v<A> && std::is_same_v<std::remove_cv_t<std::remove_pointer_t<A>>, char>) {',
               '        return std::string_view(a) == std::string_view(b);', '    } else {', '        return a == b;', '    }', '}',
               'namespace m = mcpplibs::mwrap::openssl::macros;', '}  // namespace', '']
-    lines += [f'static_assert(same(raw::value_{n}, m::{n}), "{n}");' for n in names]
+    lines += [line for n in names for line in guarded(n, f'static_assert(same(raw::value_{n}, m::{n}), "{n}");')]
     lines += ['', f'TEST(Constants, EveryMappingIsItsMacro) {{ SUCCEED() << "{len(names)} constants compared at compile time"; }}']
     return '\n'.join(lines) + '\n'
 

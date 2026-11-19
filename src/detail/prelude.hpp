@@ -2,11 +2,13 @@
 // fragment, before any OpenSSL header.
 #pragma once
 
-// On Windows <openssl/e_ostime.h> reaches <winsock2.h> and so <windows.h>,
-// whose min/max function-like macros would break later standard-library
-// code; the lean set also keeps <wincrypt.h>'s names out (OpenSSL's types.h
-// undefines the ones that collide). Consumers that include OpenSSL headers
-// themselves should define the same two macros.
+// On Windows the headers declare part of the API only when <windows.h> is
+// already in (async.h: OSSL_ASYNC_FD is a HANDLE, and ssl.h's SSL_*async*
+// functions take it), so it comes first, lean and without min/max macros that
+// would break later standard-library code. <wincrypt.h> stays out; OpenSSL's
+// types.h sets aside the names it shares with it when it is in. Consumers
+// that include OpenSSL's headers themselves should do the same
+// (<mwrap/openssl/macros.hpp> does).
 #if defined(_WIN32)
 #  ifndef NOMINMAX
 #    define NOMINMAX
@@ -14,6 +16,7 @@
 #  ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
 #  endif
+#  include <windows.h>
 #endif
 
 // Spells any type as a single type-id, so a generated declaration can name a
