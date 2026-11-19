@@ -63,6 +63,10 @@ DECL_KINDS = {'FunctionDecl', 'TypedefDecl', 'RecordDecl', 'CXXRecordDecl', 'Enu
 CONDITIONAL = {
     'OSSL_BAD_ASYNC_FD': '!defined(_WIN32)',
     'CRYPTO_ONCE_STATIC_INIT': '!defined(__APPLE__)',
+    # Declarations upstream makes on some platforms only, under its own condition (crypto.h).
+    'OPENSSL_fork_prepare': 'defined(OPENSSL_SYS_UNIX)',
+    'OPENSSL_fork_parent': 'defined(OPENSSL_SYS_UNIX)',
+    'OPENSSL_fork_child': 'defined(OPENSSL_SYS_UNIX)',
 }
 
 
@@ -521,7 +525,7 @@ def declarations_text(rec, module):
         names = entries.get(kind, [])
         if names:
             lines.append(f'// {title} ({len(names)})')
-            lines += [f'export using ::{name};' for name in names]
+            lines += [line for name in names for line in guarded(name, f'export using ::{name};')]
             lines.append('')
     adapted = {n: sig for n, sig in rec['internal']['adapted'].items() if sig['module'] == module}
     if adapted:

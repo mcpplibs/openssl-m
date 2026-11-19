@@ -4481,9 +4481,15 @@ export using ::OPENSSL_cleanse;
 export using ::OPENSSL_cleanup;
 export using ::OPENSSL_config;
 export using ::OPENSSL_die;
+#if defined(OPENSSL_SYS_UNIX)
 export using ::OPENSSL_fork_child;
+#endif
+#if defined(OPENSSL_SYS_UNIX)
 export using ::OPENSSL_fork_parent;
+#endif
+#if defined(OPENSSL_SYS_UNIX)
 export using ::OPENSSL_fork_prepare;
+#endif
 export using ::OPENSSL_gmtime;
 export using ::OPENSSL_gmtime_adj;
 export using ::OPENSSL_gmtime_diff;
