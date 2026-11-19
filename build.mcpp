@@ -1,0 +1,216 @@
+// build.mcpp — writes openssl-m's module sources from src/surface.tsv.
+//
+// The record (tools/surface.py derives it from the headers compat.openssl
+// installs, with clang) names every declaration, inline function and macro
+// of the public headers and its class; this program renders it as the
+// package is built, into MCPP_OUT_DIR:
+//
+//   mwrap-openssl/crypto.cppm   mcpplibs.mwrap.openssl.crypto  (libcrypto's declarations)
+//   mwrap-openssl/ssl.cppm      mcpplibs.mwrap.openssl.ssl     (libssl's)
+//   mwrap-openssl/macros.cppm   mcpplibs.mwrap.openssl.macros  (constants and calls)
+//   mwrap-openssl/constants_check.inc   every constant against its macro (tests/constants_test.cpp)
+//
+// src/openssl.cppm, the root module, re-exports the three. A file is
+// written only when its text changes, so a rebuild recompiles nothing.
+import std;
+import mcpp;
+
+namespace {
+
+using Fields = std::vector<std::string>;
+using Record = std::map<std::string, std::vector<Fields>, std::less<>>;
+
+Record read(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw std::runtime_error("cannot read " + path.string());
+    Record record;
+    std::vector<Fields>* section = nullptr;
+    for (std::string line; std::getline(in, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();  // a checkout with CRLF line ends
+        if (line.empty() || line.front() == '#') continue;
+        if (line.front() == '[') {
+            section = &record[line.substr(1, line.size() - 2)];
+            continue;
+        }
+        if (!section) throw std::runtime_error("an entry before the first section: " + line);
+        Fields fields;
+        for (auto field : std::views::split(line, '\t')) fields.emplace_back(field.begin(), field.end());
+        section->push_back(std::move(fields));
+    }
+    return record;
+}
+
+const std::vector<Fields>& section(const Record& record, std::string_view name) {
+    static const std::vector<Fields> none;
+    const auto found = record.find(name);
+    return found == record.end() ? none : found->second;
+}
+
+struct Text {
+    std::string text;
+    Text& operator<<(std::string_view line) {
+        text.append(line).push_back('\n');
+        return *this;
+    }
+    // A line under the condition of its entry (the field after `used`), if it has one.
+    Text& guarded(const Fields& entry, std::size_t used, std::string_view line) {
+        if (entry.size() > used) return *this << ("#if " + entry[used]) << line << "#endif";
+        return *this << line;
+    }
+};
+
+// `mwrap_openssl_t<T> p, ...` and `p, ...` of fields (name, type)... from `first`.
+std::pair<std::string, std::string> parameters(const Fields& fields, std::size_t first, std::string_view alias) {
+    std::string declared, passed;
+    for (std::size_t i = first; i + 1 < fields.size(); i += 2) {
+        if (i != first) declared += ", ", passed += ", ";
+        declared += std::format("{}<{}> {}", alias, fields[i + 1], fields[i]);
+        passed += fields[i];
+    }
+    return {declared, passed};
+}
+
+std::string forwarding(std::string_view alias, std::string_view result, std::string_view name, std::string_view params,
+                       std::string_view call) {
+    return std::format("{}<{}> {}({}) {{ {}{}; }}", alias, result, name, params, result == "void" ? "" : "return ", call);
+}
+
+constexpr std::string_view deprecation[] = {
+    "#if defined(__clang__)", "#pragma clang diagnostic ignored \"-Wdeprecated-declarations\"", "#elif defined(__GNUC__)",
+    "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"", "#endif",
+};
+
+Text banner(const Record& record) {
+    Text out;
+    out << std::format("// Written by openssl-m's build.mcpp from src/surface.tsv, the module surface of the OpenSSL {}",
+                       section(record, "openssl").at(0).at(0))
+        << "// headers compat.openssl installs (tools/surface.py derives it).";
+    return out;
+}
+
+void includes(Text& out, const Record& record, std::string_view module) {
+    for (const auto& header : section(record, "headers"))
+        if (module.empty() || module == "ssl" || header.at(1) == module) out << std::format("#include <openssl/{}>", header.at(0));
+}
+
+std::string declarations(const Record& record, std::string_view module) {
+    Text out = banner(record);
+    out << std::format("// mcpplibs.mwrap.openssl.{} — the declarations of the {} headers,", module, module == "ssl" ? "libssl" : "libcrypto")
+        << "// the upstream globals by `using`, unchanged." << "module;" << "#include \"detail/prelude.hpp\"";
+    includes(out, record, module);
+    out << "" << std::format("export module mcpplibs.mwrap.openssl.{};", module) << "";
+    for (auto line : deprecation) out << line;
+    out << "";
+    constexpr std::pair<std::string_view, std::string_view> kinds[] = {
+        {"types", "types"}, {"tags", "struct, union and enumeration tags"}, {"enumerators", "enumerators"},
+        {"objects", "objects"}, {"functions", "functions"},
+    };
+    for (const auto& [kind, title] : kinds) {
+        const auto& names = section(record, std::format("{} {}", module, kind));
+        if (names.empty()) continue;
+        out << std::format("// {} ({})", title, names.size());
+        for (const auto& entry : names) out.guarded(entry, 1, std::format("export using ::{};", entry.at(0)));
+        out << "";
+    }
+    std::vector<const Fields*> adapted;
+    for (const auto& entry : section(record, "adapted"))
+        if (entry.at(0) == module) adapted.push_back(&entry);
+    if (!adapted.empty()) {
+        out << "// The headers' functions of internal linkage (`static ossl_inline`: every includer has its own, and"
+            << std::format("// none can be exported), declared again under their names, forwarding to them ({}).", adapted.size())
+            << "export namespace mcpplibs::mwrap::openssl {";
+        for (const Fields* entry : adapted) {
+            const auto& name = entry->at(1);
+            const auto [declared, passed] = parameters(*entry, 3, "mwrap_openssl_t");
+            out << forwarding("mwrap_openssl_t", entry->at(2), name, declared, std::format("::{}({})", name, passed));
+        }
+        out << "}  // namespace mcpplibs::mwrap::openssl";
+    }
+    return out.text;
+}
+
+std::string macros(const Record& record) {
+    const auto& constants = section(record, "constants");
+    const auto& calls = section(record, "calls");
+    Text out = banner(record);
+    out << "// mcpplibs.mwrap.openssl.macros — OpenSSL's macros (a named module cannot export a macro), under their"
+        << "// original names in mcpplibs::mwrap::openssl::macros: the constants as `inline constexpr` of the"
+        << "// expansion's type; the macros that expand to one call of a function as functions with that function's"
+        << "// parameter and return types. The other macros stay macros: <mwrap/openssl/macros.hpp> (docs/usage.md)."
+        << "module;" << "#include \"detail/prelude.hpp\"";
+    includes(out, record, "");
+    // Each value and call is taken while its macro is defined; then the macros are set aside, and the
+    // module declares the same names.
+    out << "" << "#if defined(__clang__)" << "#pragma clang diagnostic push" << "#pragma clang diagnostic ignored \"-Wdeprecated-declarations\""
+        << "#elif defined(__GNUC__)" << "#pragma GCC diagnostic push" << "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" << "#endif"
+        << "" << "namespace mwrap_openssl_capture {" << "template <class T> using mwrap_t = T;";
+    for (const auto& entry : constants)
+        out.guarded(entry, 1, std::format("inline constexpr auto value_{0} = {0};", entry.at(0)));
+    for (const auto& entry : calls) {
+        const auto [declared, passed] = parameters(entry, 3, "mwrap_t");
+        out << "inline " + forwarding("mwrap_t", entry.at(2), "call_" + entry.at(0), declared, std::format("{}({})", entry.at(0), passed));
+    }
+    out << "}  // namespace mwrap_openssl_capture" << "" << "#if defined(__clang__)" << "#pragma clang diagnostic pop"
+        << "#elif defined(__GNUC__)" << "#pragma GCC diagnostic pop" << "#endif" << "";
+    for (const auto& entry : constants) out << "#undef " + entry.at(0);
+    for (const auto& entry : calls) out << "#undef " + entry.at(0);
+    out << "" << "export module mcpplibs.mwrap.openssl.macros;" << "";
+    for (auto line : deprecation) out << line;
+    out << "" << "export namespace mcpplibs::mwrap::openssl::macros {" << std::format("// constants ({})", constants.size());
+    for (const auto& entry : constants)
+        out.guarded(entry, 1, std::format("inline constexpr auto {0} = mwrap_openssl_capture::value_{0};", entry.at(0)));
+    out << std::format("// calls ({})", calls.size());
+    for (const auto& entry : calls) {
+        const auto [declared, passed] = parameters(entry, 3, "mwrap_openssl_t");
+        out << forwarding("mwrap_openssl_t", entry.at(2), entry.at(0), declared, std::format("mwrap_openssl_capture::call_{}({})", entry.at(0), passed));
+    }
+    out << "}  // namespace mcpplibs::mwrap::openssl::macros";
+    return out.text;
+}
+
+// Included by tests/constants_test.cpp after the headers and the import, where `same` is declared.
+std::string constants_check(const Record& record) {
+    const auto& constants = section(record, "constants");
+    Text out = banner(record);
+    out << "// Every constant of mcpplibs.mwrap.openssl.macros against its macro: same type, same value. While a"
+        << "// macro is defined it expands even inside a qualified name, so each is taken, then set aside."
+        << "namespace raw {";
+    for (const auto& entry : constants) out.guarded(entry, 1, std::format("inline constexpr auto value_{0} = {0};", entry.at(0)));
+    out << "}  // namespace raw" << "";
+    for (const auto& entry : constants) out << "#undef " + entry.at(0);
+    out << "";
+    for (const auto& entry : constants)
+        out.guarded(entry, 1, std::format("static_assert(same(raw::value_{0}, mcpplibs::mwrap::openssl::macros::{0}), \"{0}\");", entry.at(0)));
+    out << std::format("inline constexpr int constants_compared = {};", constants.size());
+    return out.text;
+}
+
+void write(const std::filesystem::path& path, const std::string& text) {
+    {
+        std::ifstream in(path, std::ios::binary);
+        if (in && std::string(std::istreambuf_iterator<char>(in), {}) == text) return;
+    }
+    std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
+}
+
+}  // namespace
+
+int main() try {
+    const std::filesystem::path root = mcpp::manifest_dir();
+    const std::filesystem::path out = std::filesystem::path(mcpp::out_dir()) / "mwrap-openssl";
+    mcpp::rerun_if_changed((root / "src/surface.tsv").string().c_str());
+    const Record record = read(root / "src/surface.tsv");
+    std::filesystem::create_directories(out);
+    write(out / "crypto.cppm", declarations(record, "crypto"));
+    write(out / "ssl.cppm", declarations(record, "ssl"));
+    write(out / "macros.cppm", macros(record));
+    write(out / "constants_check.inc", constants_check(record));
+    for (const char* unit : {"crypto.cppm", "ssl.cppm", "macros.cppm"}) mcpp::generated((out / unit).string().c_str());
+    // "detail/prelude.hpp" for the generated units; constants_check.inc for the tests.
+    mcpp::include_dir((root / "src").string().c_str());
+    mcpp::include_dir(out.string().c_str());
+    return 0;
+} catch (const std::exception& error) {
+    std::printf("openssl-m build.mcpp: %s\n", error.what());
+    return 1;
+}

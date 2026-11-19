@@ -35,7 +35,8 @@ if (o::ERR_GET_LIB(ERR_peek_last_error()) == o::macros::ERR_LIB_SSL) { /* … */
 ## Macros
 
 A named module cannot export a macro. `tools/surface.py` puts every macro the headers define in
-one class ([the complete list](macros.md)):
+one class (the complete list, with the reason for each textual macro, is
+[src/surface.tsv](../src/surface.tsv): `grep -P '^SSL_get_cipher_name\t' src/surface.tsv`):
 
 - **Constants** (11632) are `inline constexpr` of the expansion's type: `SSL_OP_*`,
   `SSL_ERROR_*`, `SSL_VERIFY_*`, `TLS1_2_VERSION`, `EVP_MAX_MD_SIZE`, `EVP_CTRL_*`, `NID_*`,
@@ -90,6 +91,6 @@ the build graph. On Linux aarch64, mcpp's `gcc@16.1.0` is a musl toolchain
 
 ```sh
 mcpp build                                    # installs compat.openssl and its headers
-python3 tools/surface.py --clang <clang++> --write
+python3 tools/surface.py --clang <clang++>    # writes src/surface.tsv
 python3 tools/check_exports.py --clang <clang++>
 ```

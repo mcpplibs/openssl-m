@@ -16,8 +16,9 @@ platforms   = ["linux", "macos", "windows"]
 kind = "lib"
 
 [build]
-# src/crypto.cppm, src/ssl.cppm, src/macros.cppm and src/detail/capture.hpp
-# are written by tools/surface.py from the headers compat.openssl installs.
+# src/openssl.cppm re-exports mcpplibs.mwrap.openssl.{crypto,ssl,macros},
+# which build.mcpp writes from src/surface.tsv (tools/surface.py derives that
+# record from the headers compat.openssl installs).
 sources      = ["src/*.cppm"]
 # <mwrap/openssl/macros.hpp>: OpenSSL's macros as macros.
 include_dirs = ["include"]

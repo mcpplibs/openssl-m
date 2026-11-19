@@ -12,9 +12,10 @@
 The upstream C API is unchanged: `SSL_CTX`, `EVP_DigestInit_ex`, `X509_verify_cert` are the
 upstream globals of `<openssl/...>`. The library is `compat.openssl` 3.5.9, built by OpenSSL's
 own Configure from the release (with assembly on Linux and macOS; `no-asm` on Windows). The
-module surface is derived from the configured headers by the compiler: every declaration,
-the functions the headers define `static ossl_inline` declared again, and every macro either
-mapped or listed with its reason.
+module surface is derived from the configured headers by the compiler and recorded in
+[src/surface.tsv](src/surface.tsv): every declaration, the functions the headers define
+`static ossl_inline`, and every macro either mapped or listed with its reason. `build.mcpp`
+writes the module sources from that record as the package is built.
 
 ## Modules
 
@@ -69,7 +70,7 @@ are declared again in `mcpplibs::mwrap::openssl`. The rest stay macros in
 `<mwrap/openssl/macros.hpp>`: the type-generic `sk_TYPE_*` / `lh_*` / `STACK_OF`, the OID arc
 lists `OBJ_*`, `OPENSSL_malloc` / `OPENSSL_free` and the others that record `__FILE__`, and the
 `OPENSSL_NO_*` switches. Include that header before the imports
-([every macro, by class](docs/macros.md)).
+(every macro, by class and with the reason: [src/surface.tsv](src/surface.tsv)).
 
 ## Platforms
 
@@ -84,7 +85,7 @@ CI on every platform and compiler (GCC 16, LLVM 23) builds the modules and runs 
 digests, MACs and AES-GCM against published vectors, the error queue, a self-signed
 certificate verified, TLS 1.2 and 1.3 handshakes over memory BIOs, every constant against its
 macro, and header mixing. The export audit ([tools/check_exports.py](tools/check_exports.py))
-checks that the generated sources are fresh and, on the Linux LLVM row, derives the record
+checks the record [src/surface.tsv](src/surface.tsv) and, on the Linux LLVM row, derives it
 again from the headers. A separate job scaffolds both templates as an installed package and
 runs them.
 

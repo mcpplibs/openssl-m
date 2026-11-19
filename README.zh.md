@@ -63,7 +63,7 @@ std::string sha256(std::string_view text) {
 `ERR_GET_REASON`、`OPENSSL_load_u32_le`、`lh_*` 等 334 个）在 `mcpplibs::mwrap::openssl` 中重新声明。
 其余保持为宏，由 `<mwrap/openssl/macros.hpp>` 提供：类型泛型的 `sk_TYPE_*` / `lh_*` / `STACK_OF`、
 OID 弧列表 `OBJ_*`、记录 `__FILE__` 的 `OPENSSL_malloc` / `OPENSSL_free` 等，以及 `OPENSSL_NO_*`
-开关。该头文件放在 import 之前（[全部宏及分类](docs/macros.md)）。
+开关。该头文件放在 import 之前（全部宏的分类及原因见 [src/surface.tsv](src/surface.tsv)）。
 
 ## 平台
 
@@ -76,7 +76,7 @@ Linux x86_64（GCC、LLVM）与 aarch64（LLVM）、macOS（arm64）、Windows�
 
 CI 在每个平台与编译器（GCC 16、LLVM 23）上构建模块并运行测试：摘要、MAC 与 AES-GCM
 的公开向量，错误队列，自签证书校验，经内存 BIO 的 TLS 1.2 与 1.3 握手，每个常量与其宏的比较，
-以及头文件混用。导出审计（[tools/check_exports.py](tools/check_exports.py)）检查生成的源码是否最新，
+以及头文件混用。导出审计（[tools/check_exports.py](tools/check_exports.py)）检查记录 src/surface.tsv 的完整性，
 并在 Linux LLVM 行上从头文件重新推导记录。另一个作业把两个模板作为已安装包生成并运行。
 
 ## 许可
