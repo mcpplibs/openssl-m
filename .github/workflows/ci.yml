@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # compat.openssl 3.5.9 is in mcpp-index#845 and not yet in the published index:
+  # until it is, the run resolves against that PR's candidate commit, the complete
+  # unchanged index layout installed as the built-in index of the run's home.
+  # Drop this pin and the step that reads it once the index publishes 3.5.9.
+  MCPP_INDEX_CANDIDATE: "7359195426993b43217bd07d02454e61c15abf31"
+
+jobs:
+  mcpp:
+    name: mcpp (${{ matrix.os }}, ${{ matrix.toolchain }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04,     toolchain: 'gcc@16.1.0' }
+          - { os: ubuntu-24.04,     toolchain: 'llvm@23.1.3' }
+          # No ubuntu-24.04-arm gcc@16.1.0 row: on Linux aarch64 mcpp's gcc@16.1.0 is a
+          # musl toolchain (aarch64-linux-musl-g++), and compat.openssl is built at
+          # install time against glibc, so the two cannot link: the musl-graph limit
+          # README states. LLVM on aarch64 targets glibc and is tested below.
+          - { os: ubuntu-24.04-arm, toolchain: 'llvm@23.1.3' }
+          - { os: macos-15,         toolchain: 'llvm@23.1.3' }
+          - { os: windows-2025,     toolchain: 'llvm@23.1.3' }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      XLINGS_NON_INTERACTIVE: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Mwrap identity and bilingual README contract
+        run: python3 tools/check_mwrap_release.py
+
+      - name: Install Xlings (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/openxlings/xlings/refs/heads/main/tools/other/quick_install.sh | bash
+          echo "$HOME/.xlings/subos/current/bin" >> "$GITHUB_PATH"
+
+      - name: Install Xlings (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          irm https://raw.githubusercontent.com/openxlings/xlings/main/tools/other/quick_install.ps1 | iex
+          "$env:USERPROFILE\.xlings\subos\current\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install project tools (.xlings.json)
+        run: |
+          for attempt in 1 2 3; do
+            xlings update > /dev/null 2>&1 || true
+            if xlings install; then break; fi
+            [ "$attempt" = 3 ] && exit 1
+            sleep 30
+          done
+          mcpp --version
+
+      - name: Candidate index (mcpp-index#845)
+        run: |
+          mcpp index update
+          # No early exit in awk: mcpp would take SIGPIPE, and pipefail report it.
+          home=$(mcpp self env | awk -F'= *' '/^MCPP_HOME/ && !h {h = $2} END {print h}')
+          test -n "$home"
+          git init -q "$RUNNER_TEMP/index"
+          git -C "$RUNNER_TEMP/index" fetch -q --depth 1 https://github.com/mcpplibs/mcpp-index "$MCPP_INDEX_CANDIDATE"
+          git -C "$RUNNER_TEMP/index" checkout -q FETCH_HEAD
+          python3 "$RUNNER_TEMP/index/tests/prepare_builtin_index.py" --home "$home"
+
+      - name: Select the toolchain
+        run: |
+          name="${{ matrix.toolchain }}"
+          mcpp toolchain install "${name%@*}" "${name#*@}"
+          mcpp toolchain default "$name"
+
+      - name: Build the modules
+        run: mcpp build
+
+      - name: Tests (vectors, the error queue, a certificate, TLS 1.2 and 1.3 over memory BIOs, every constant, header mixing)
+        run: mcpp test
+
+      - name: Tests, release profile
+        run: mcpp test --profile release
+
+      - name: Export audit (src/surface.tsv is well formed; on the Linux LLVM row clang derives it again)
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-24.04" ] && [ "${{ matrix.toolchain }}" = "llvm@23.1.3" ]; then
+            export MWRAP_REQUIRE_CLANG=1
+            export MWRAP_CLANG="$(ls -d "$HOME"/.mcpp/registry/data/xpkgs/xim-x-llvm/23.1.3/bin/clang++ "$HOME"/.xlings/data/xpkgs/xim-x-llvm/23.1.3/bin/clang++ 2>/dev/null | head -1)"
+          fi
+          python3 tools/check_exports.py

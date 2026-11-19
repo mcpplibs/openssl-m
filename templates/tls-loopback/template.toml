@@ -1,0 +1,3 @@
+[template]
+description  = "A TLS 1.3 client and server over a pair of memory BIOs, with a certificate made at run time"
+post_message = "Run `mcpp run`."

@@ -1,0 +1,81 @@
+// SHA-256, HMAC-SHA-256 and AES-256-GCM through import mcpplibs.mwrap.openssl:
+// the results are checked against published test vectors, and an altered
+// message is refused by the authentication tag.
+import std;
+import mcpplibs.mwrap.openssl;
+
+namespace m = mcpplibs::mwrap::openssl::macros;
+
+namespace {
+std::string hex(const unsigned char* data, std::size_t size) {
+    std::string out;
+    for (std::size_t i = 0; i < size; ++i) out += std::format("{:02x}", data[i]);
+    return out;
+}
+const unsigned char* bytes(std::string_view text) { return reinterpret_cast<const unsigned char*>(text.data()); }
+
+// The reason of the newest error in OpenSSL's queue, emptying it.
+std::string last_error() {
+    char text[256] = "no error";
+    if (const unsigned long code = ERR_get_error()) ERR_error_string_n(code, text, sizeof text);
+    ERR_clear_error();
+    return text;
+}
+}  // namespace
+
+int main() {
+    std::println("{}", OpenSSL_version(m::OPENSSL_VERSION));
+    bool ok = true;
+
+    unsigned char digest[m::EVP_MAX_MD_SIZE];
+    unsigned int digest_size = 0;
+    EVP_Digest(bytes("abc"), 3, digest, &digest_size, EVP_sha256(), nullptr);
+    const std::string sha = hex(digest, digest_size);
+    std::println("SHA-256(\"abc\")  {}", sha);
+    ok = ok && sha == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+    unsigned char mac[m::EVP_MAX_MD_SIZE];
+    std::size_t mac_size = 0;
+    const std::string_view key = "Jefe", data = "what do ya want for nothing?";
+    EVP_Q_mac(nullptr, "HMAC", nullptr, "SHA256", nullptr, key.data(), key.size(), bytes(data), data.size(), mac, sizeof mac, &mac_size);
+    const std::string hmac = hex(mac, mac_size);
+    std::println("HMAC-SHA-256     {}", hmac);
+    ok = ok && hmac == "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843";
+
+    unsigned char aes_key[32], iv[12];
+    RAND_bytes(aes_key, sizeof aes_key);
+    RAND_bytes(iv, sizeof iv);
+    const std::string_view message = "attack at dawn";
+    std::vector<unsigned char> sealed(message.size());
+    unsigned char tag[16];
+    int size = 0, tail = 0;
+    EVP_CIPHER_CTX* context = EVP_CIPHER_CTX_new();
+    EVP_EncryptInit_ex(context, EVP_aes_256_gcm(), nullptr, aes_key, iv);
+    EVP_EncryptUpdate(context, sealed.data(), &size, bytes(message), static_cast<int>(message.size()));
+    EVP_EncryptFinal_ex(context, sealed.data() + size, &tail);
+    EVP_CIPHER_CTX_ctrl(context, m::EVP_CTRL_GCM_GET_TAG, sizeof tag, tag);
+    std::println("AES-256-GCM      {} bytes sealed, tag {}", sealed.size(), hex(tag, sizeof tag));
+
+    auto open = [&](const std::vector<unsigned char>& input) {
+        std::string plain(input.size(), '\0');
+        EVP_DecryptInit_ex(context, EVP_aes_256_gcm(), nullptr, aes_key, iv);
+        EVP_DecryptUpdate(context, reinterpret_cast<unsigned char*>(plain.data()), &size, input.data(), static_cast<int>(input.size()));
+        EVP_CIPHER_CTX_ctrl(context, m::EVP_CTRL_GCM_SET_TAG, sizeof tag, tag);
+        const bool authentic = EVP_DecryptFinal_ex(context, reinterpret_cast<unsigned char*>(plain.data()) + size, &tail) == 1;
+        return std::pair{authentic, plain};
+    };
+    const auto [authentic, plain] = open(sealed);
+    std::println("opened           \"{}\" ({})", plain, authentic ? "authentic" : "refused");
+    ok = ok && authentic && plain == message;
+    sealed[0] ^= 1;
+    const auto [tampered, ignored] = open(sealed);
+    std::println("altered          {}", tampered ? "accepted" : "refused, as it must be");
+    ok = ok && !tampered;
+    EVP_CIPHER_CTX_free(context);
+
+    // An error path: OpenSSL reports into its queue.
+    if (BIO_new_file("no-such-file.pem", "rb") == nullptr) std::println("a missing file   {}", last_error());
+
+    std::println("{}", ok ? "all results as expected" : "UNEXPECTED RESULT");
+    return ok ? 0 : 1;
+}
