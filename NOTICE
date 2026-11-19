@@ -1,0 +1,16 @@
+openssl-m: C++ module wrapper
+Copyright (c) 2026 mcpp-community contributors
+
+The wrapper contributions are licensed under the Apache License, Version 2.0.
+Upstream code, copied interfaces and dependencies retain their original
+licenses and copyright notices. OpenSSL is distributed under the Apache
+License, Version 2.0:
+
+  Copyright (c) 1998-2025 The OpenSSL Project Authors.
+  Copyright (c) 1995-1998 Eric A. Young, Tim J. Hudson.
+
+Its original README and license are retained in upstream/openssl/. The
+library itself is built by compat.openssl from the same release (3.5.9), with
+OpenSSL's own Configure: with assembly on Linux and macOS, without (no-asm,
+VC-WIN64A) on Windows. Provenance and checksums are recorded in
+upstream/documents.json.

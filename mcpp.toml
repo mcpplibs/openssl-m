@@ -1,0 +1,52 @@
+# Module wrapper; upstream API preserved. Policy: mcpp-index/docs/mwrap.md.
+[package]
+namespace   = "mcpplibs.mwrap"
+name        = "openssl"
+version     = "3.5.9"
+description = "OpenSSL 3.5 LTS C++ modules for mcpp (import mcpplibs.mwrap.openssl;): libcrypto and libssl as the headers declare them, the constants and call macros under their names, the inline functions declared again"
+license     = "Apache-2.0"
+authors     = ["mcpp-community"]
+repo        = "https://github.com/mcpplibs/openssl-m"
+# compat.openssl is built at install time by OpenSSL's own Configure for the
+# host (Linux and macOS with assembly, Windows VC-WIN64A without), so the
+# package has no cross target: no wasm32, no musl/openkal graph.
+platforms   = ["linux", "macos", "windows"]
+
+[targets.openssl]
+kind = "lib"
+
+[build]
+# src/crypto.cppm, src/ssl.cppm, src/macros.cppm and src/detail/capture.hpp
+# are written by tools/surface.py from the headers compat.openssl installs.
+sources      = ["src/*.cppm"]
+# <mwrap/openssl/macros.hpp>: OpenSSL's macros as macros.
+include_dirs = ["include"]
+
+[dependencies]
+compat.openssl = "3.5.9"
+
+[dev-dependencies]
+compat.gtest = "1.15.2"
+
+[package.metadata.mwrap]
+upstream-version = "3.5.9"
+
+[[runtime.deploy]]
+from = "LICENSE"
+to   = "licenses/openssl"
+
+[[runtime.deploy]]
+from = "NOTICE"
+to   = "licenses/openssl"
+
+[[runtime.deploy]]
+from = "upstream/openssl/README.md"
+to   = "licenses/openssl/upstream/openssl"
+
+[[runtime.deploy]]
+from = "upstream/openssl/LICENSE.txt"
+to   = "licenses/openssl/upstream/openssl"
+
+# <windows.h> reaches the headers through <winsock2.h> (e_ostime.h).
+[target.'cfg(windows)'.build]
+cxxflags = ["-DNOMINMAX", "-DWIN32_LEAN_AND_MEAN"]
